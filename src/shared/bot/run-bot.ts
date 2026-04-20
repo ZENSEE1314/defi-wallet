@@ -58,7 +58,10 @@ async function main(): Promise<void> {
         }
       : undefined,
     slippageBps: Number(process.env.SLIPPAGE_BPS ?? "100"),
-    ethPriceUsd: 3000, // TODO: pull from price feed
+    // Native token USD price — bot uses this to convert AUTO_BUY_USD to a
+    // native amount. Default per chain so users don't accidentally buy the
+    // wrong size. Override via NATIVE_PRICE_USD when prices move significantly.
+    ethPriceUsd: Number(process.env.NATIVE_PRICE_USD ?? defaultNativePrice(chain.id)),
     paperMode
   });
 
@@ -86,6 +89,20 @@ async function main(): Promise<void> {
     await bot.stop();
     process.exit(0);
   });
+}
+
+function defaultNativePrice(chainId: number): number {
+  // Rough current prices — only used when NATIVE_PRICE_USD env isn't set.
+  // Update or override via env when prices move materially.
+  switch (chainId) {
+    case 56: return 600;     // BNB
+    case 137: return 0.5;    // MATIC
+    case 1: return 3000;     // ETH mainnet
+    case 8453: return 3000;  // ETH on Base
+    case 42161: return 3000; // ETH on Arbitrum
+    case 10: return 3000;    // ETH on Optimism
+    default: return 3000;
+  }
 }
 
 main().catch((e) => {
