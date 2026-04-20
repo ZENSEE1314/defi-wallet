@@ -9,11 +9,18 @@ async function main(): Promise<void> {
   const chainId = Number(process.env.BOT_CHAIN_ID ?? "1");
   const chain = findChain(BUILTIN_CHAINS, chainId);
   if (!chain) throw new Error(`unknown chain ${chainId}`);
-  if (!process.env.BOT_PRIVATE_KEY) throw new Error("BOT_PRIVATE_KEY required");
+  const paperMode = process.env.PAPER_MODE !== "false";
+  if (!process.env.BOT_PRIVATE_KEY && !paperMode) {
+    throw new Error("BOT_PRIVATE_KEY required when PAPER_MODE=false");
+  }
+  // Paper mode never sends transactions, so a throwaway random key is fine.
+  const privateKey =
+    process.env.BOT_PRIVATE_KEY ??
+    "0x" + Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, "0")).join("");
 
   const bot = new TradingBot({
     chain: { ...chain, rpcUrl: process.env.BOT_RPC_URL ?? chain.rpcUrl },
-    privateKey: process.env.BOT_PRIVATE_KEY,
+    privateKey,
     filters: {
       chain: chain.name.toLowerCase().includes("base") ? "base" : "ethereum",
       minLiquidityUsd: Number(process.env.DISCOVERY_MIN_LIQUIDITY_USD ?? "50000"),
@@ -26,7 +33,7 @@ async function main(): Promise<void> {
     autoStopLossPct: Number(process.env.AUTO_STOP_LOSS_PCT ?? "20"),
     slippageBps: Number(process.env.SLIPPAGE_BPS ?? "100"),
     ethPriceUsd: 3000, // TODO: pull from price feed
-    paperMode: process.env.PAPER_MODE !== "false"
+    paperMode
   });
 
   bot.on("event", (e) => console.log(JSON.stringify(e)));
