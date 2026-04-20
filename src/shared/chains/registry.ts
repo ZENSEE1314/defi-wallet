@@ -61,9 +61,9 @@ export const BUILTIN_CHAINS: Chain[] = [
     symbol: "BNB",
     rpcUrl: "https://bsc-dataseed.bnbchain.org",
     explorerUrl: "https://bscscan.com",
-    // Uniswap V3 SwapRouter02 on BSC. The bot's discovery uses Dexscreener "bsc";
-    // wrap with WBNB for native swaps.
-    uniswapRouter: "0xB971eF87ede563556b2ED4b1C0b0019111Dd85d2",
+    // PancakeSwap V3 SmartRouter — dominant DEX on BSC. WBNB for wrapping.
+    // Front-runner targets this address when watching the BSC mempool.
+    uniswapRouter: "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4",
     weth: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
   },
   {

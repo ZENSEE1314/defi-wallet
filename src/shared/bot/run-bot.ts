@@ -31,6 +31,17 @@ async function main(): Promise<void> {
     autoBuyUsd: Number(process.env.AUTO_BUY_USD ?? "50"),
     autoSellProfitPct: Number(process.env.AUTO_SELL_PROFIT_PCT ?? "50"),
     autoStopLossPct: Number(process.env.AUTO_STOP_LOSS_PCT ?? "20"),
+    mirrorSell: process.env.MIRROR_SELL === "true",
+    frontrun: process.env.FRONTRUN_ENABLED === "true" && process.env.WSS_RPC_URL
+      ? {
+          wssUrl: process.env.WSS_RPC_URL,
+          gasBoostBps: Number(process.env.FRONTRUN_GAS_BOOST_BPS ?? "5000"),
+          maxGasGwei: Number(process.env.FRONTRUN_MAX_GAS_GWEI ?? "20"),
+          minBuyUsd: Number(process.env.FRONTRUN_MIN_BUY_USD ?? "500"),
+          maxBuyUsd: Number(process.env.FRONTRUN_MAX_BUY_USD ?? "50000"),
+          cooldownMs: Number(process.env.FRONTRUN_COOLDOWN_MS ?? "10000")
+        }
+      : undefined,
     slippageBps: Number(process.env.SLIPPAGE_BPS ?? "100"),
     ethPriceUsd: 3000, // TODO: pull from price feed
     paperMode

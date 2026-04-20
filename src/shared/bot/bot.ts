@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { discover, type DiscoveredToken, type DiscoveryFilters } from "./discovery";
 import { WhaleTracker, type WhaleEvent } from "./whale";
 import { swap } from "./swap";
+import { MempoolFrontrunner, type FrontrunEvent } from "./frontrun";
 import type { Chain } from "../chains/registry";
 
 export type BotConfig = {
@@ -17,14 +18,26 @@ export type BotConfig = {
   ethPriceUsd: number; // injected — bot avoids price-feed work for now
   paperMode: boolean;
   discoverIntervalMs?: number;
+  // Optional mempool front-run mode (BSC/ETH only — L2s have private sequencers).
+  frontrun?: {
+    wssUrl: string;
+    gasBoostBps: number;
+    maxGasGwei: number;
+    minBuyUsd: number;
+    maxBuyUsd: number;
+    cooldownMs: number;
+  };
+  // Mirror exit: when a tracked whale sells a token, sell our position too.
+  mirrorSell?: boolean;
 };
 
 export type BotEvent =
   | { kind: "discovered"; token: DiscoveredToken }
   | { kind: "whale"; event: WhaleEvent }
   | { kind: "buy"; token: string; amountEth: string; hash: string; paper: boolean }
-  | { kind: "sell"; token: string; reason: "profit" | "stop"; hash: string; paper: boolean }
+  | { kind: "sell"; token: string; reason: "profit" | "stop" | "whale-exit"; hash: string; paper: boolean }
   | { kind: "skip"; token: string; reason: string }
+  | { kind: "frontrun"; event: FrontrunEvent }
   | { kind: "error"; message: string };
 
 type Position = {
@@ -40,6 +53,7 @@ export class TradingBot extends EventEmitter {
   private provider: JsonRpcProvider;
   private signer: Wallet;
   private whale: WhaleTracker | null = null;
+  private frontrunner: MempoolFrontrunner | null = null;
   private discoverHandle: NodeJS.Timeout | null = null;
   private positions = new Map<string, Position>();
   private seen = new Set<string>();
@@ -63,6 +77,25 @@ export class TradingBot extends EventEmitter {
       await this.whale.start();
     }
 
+    if (this.cfg.frontrun && this.cfg.whaleAddresses.length > 0) {
+      this.frontrunner = new MempoolFrontrunner({
+        chain: this.cfg.chain,
+        wssUrl: this.cfg.frontrun.wssUrl,
+        privateKey: this.cfg.privateKey,
+        whaleAddresses: this.cfg.whaleAddresses,
+        ourBuyUsd: this.cfg.autoBuyUsd,
+        ethPriceUsd: this.cfg.ethPriceUsd,
+        gasBoostBps: this.cfg.frontrun.gasBoostBps,
+        maxGasGwei: this.cfg.frontrun.maxGasGwei,
+        minBuyUsd: this.cfg.frontrun.minBuyUsd,
+        maxBuyUsd: this.cfg.frontrun.maxBuyUsd,
+        cooldownMs: this.cfg.frontrun.cooldownMs,
+        paperMode: this.cfg.paperMode
+      });
+      this.frontrunner.on("event", (e) => this.emitEvent({ kind: "frontrun", event: e }));
+      await this.frontrunner.start();
+    }
+
     const interval = this.cfg.discoverIntervalMs ?? 60_000;
     const tick = () => this.runDiscovery().catch((e) => this.emitEvent({ kind: "error", message: String(e) }));
     tick();
@@ -75,6 +108,8 @@ export class TradingBot extends EventEmitter {
     this.discoverHandle = null;
     this.whale?.stop();
     this.whale = null;
+    await this.frontrunner?.stop();
+    this.frontrunner = null;
   }
 
   status(): { running: boolean; positions: Position[] } {
@@ -172,6 +207,13 @@ export class TradingBot extends EventEmitter {
 
   private async handleWhale(e: WhaleEvent): Promise<void> {
     this.emitEvent({ kind: "whale", event: e });
+
+    // Mirror exit: whale dumping a token we hold? Sell ours too.
+    if (e.type === "sell" && this.cfg.mirrorSell && this.positions.has(e.token)) {
+      await this.exitPosition(e.token, "whale-exit");
+      return;
+    }
+
     if (e.type !== "buy") return;
     if (this.seen.has(e.token.toLowerCase())) return;
     if (!this.cfg.chain.uniswapRouter || !this.cfg.chain.weth) return;
@@ -206,6 +248,37 @@ export class TradingBot extends EventEmitter {
       });
     } catch (err) {
       this.emitEvent({ kind: "error", message: `whale-follow buy failed: ${String(err)}` });
+    }
+  }
+
+  private async exitPosition(token: string, reason: "profit" | "stop" | "whale-exit"): Promise<void> {
+    if (!this.cfg.chain.uniswapRouter || !this.cfg.chain.weth) return;
+    try {
+      if (this.cfg.paperMode) {
+        this.emitEvent({ kind: "sell", token, reason, hash: "PAPER", paper: true });
+      } else {
+        const { tokenBalance } = await import("./swap");
+        const bal = await tokenBalance(this.provider, token, await this.signer.getAddress());
+        if (bal.raw === 0n) {
+          this.positions.delete(token);
+          return;
+        }
+        const { hash } = await swap({
+          router: this.cfg.chain.uniswapRouter,
+          weth: this.cfg.chain.weth,
+          signer: this.signer,
+          provider: this.provider,
+          tokenIn: token,
+          tokenOut: this.cfg.chain.weth,
+          amountIn: bal.raw,
+          slippageBps: this.cfg.slippageBps,
+          isNativeOut: true
+        });
+        this.emitEvent({ kind: "sell", token, reason, hash, paper: false });
+      }
+      this.positions.delete(token);
+    } catch (err) {
+      this.emitEvent({ kind: "error", message: `exit (${reason}) failed: ${String(err)}` });
     }
   }
 
