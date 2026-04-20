@@ -3,6 +3,7 @@
 
 import "dotenv/config";
 import { TradingBot } from "./bot";
+import { BotApi } from "./api";
 import { BUILTIN_CHAINS, findChain } from "../chains/registry";
 
 async function main(): Promise<void> {
@@ -65,6 +66,21 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ kind: "boot", chain: chain.name, paperMode, filters: { minLiq: process.env.DISCOVERY_MIN_LIQUIDITY_USD ?? "50000", minVol: process.env.DISCOVERY_MIN_VOLUME_24H_USD ?? "100000", maxAge: process.env.DISCOVERY_MAX_AGE_HOURS ?? "72" } }));
   await bot.start();
   setInterval(() => console.log(JSON.stringify({ kind: "heartbeat", at: new Date().toISOString(), positions: bot.status().positions.length })), 30_000);
+
+  // HTTP control plane — only enabled if BOT_API_TOKEN is set, so the bot
+  // doesn't accidentally expose itself unauthenticated.
+  const apiToken = process.env.BOT_API_TOKEN;
+  if (apiToken) {
+    const api = new BotApi(bot, apiToken, {
+      paperMode,
+      momentumEnabled: process.env.MOMENTUM_ENABLED === "true",
+      frontrunEnabled: process.env.FRONTRUN_ENABLED === "true"
+    });
+    const port = Number(process.env.PORT ?? process.env.BOT_API_PORT ?? "8080");
+    api.listen(port);
+  } else {
+    console.log(JSON.stringify({ kind: "api-disabled", reason: "BOT_API_TOKEN not set" }));
+  }
 
   process.on("SIGINT", async () => {
     await bot.stop();
