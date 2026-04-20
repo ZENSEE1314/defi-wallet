@@ -1,0 +1,46 @@
+{
+  "name": "defi-wallet",
+  "version": "0.1.0",
+  "description": "Multi-chain DeFi wallet with embedded dApp browser and auto-trading bot",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && tsc -p tsconfig.main.json && electron .",
+    "build": "vite build && tsc -p tsconfig.main.json",
+    "start": "electron .",
+    "bot": "tsx src/shared/bot/run-bot.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4",
+    "@uniswap/sdk-core": "^5.9.0",
+    "@uniswap/v3-sdk": "^3.18.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0",
+    "zustand": "^5.0.1",
+    "electron-store": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/node": "^22.9.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.zensee.defi-wallet",
+    "productName": "DeFi Wallet",
+    "files": ["dist/**/*", "assets/**/*"],
+    "directories": { "output": "release" }
+  }
+}
