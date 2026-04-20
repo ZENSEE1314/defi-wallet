@@ -4,6 +4,7 @@ import { discover, type DiscoveredToken, type DiscoveryFilters } from "./discove
 import { WhaleTracker, type WhaleEvent } from "./whale";
 import { swap } from "./swap";
 import { MempoolFrontrunner, type FrontrunEvent } from "./frontrun";
+import { MomentumScanner, type MomentumEvent } from "./momentum";
 import type { Chain } from "../chains/registry";
 
 export type BotConfig = {
@@ -29,6 +30,19 @@ export type BotConfig = {
   };
   // Mirror exit: when a tracked whale sells a token, sell our position too.
   mirrorSell?: boolean;
+  // Top-volume momentum scanner — designed for small capital (~$100) on BSC.
+  momentum?: {
+    topN: number;
+    buyUsd: number;
+    thresh1mPct: number;
+    thresh5mPct: number;
+    takeProfitPct: number;
+    stopLossPct: number;
+    timeStopMinutes: number;
+    minLiquidityUsd: number;
+    maxConcurrentPositions: number;
+    pollIntervalMs: number;
+  };
 };
 
 export type BotEvent =
@@ -38,6 +52,7 @@ export type BotEvent =
   | { kind: "sell"; token: string; reason: "profit" | "stop" | "whale-exit"; hash: string; paper: boolean }
   | { kind: "skip"; token: string; reason: string }
   | { kind: "frontrun"; event: FrontrunEvent }
+  | { kind: "momentum"; event: MomentumEvent }
   | { kind: "error"; message: string };
 
 type Position = {
@@ -54,6 +69,7 @@ export class TradingBot extends EventEmitter {
   private signer: Wallet;
   private whale: WhaleTracker | null = null;
   private frontrunner: MempoolFrontrunner | null = null;
+  private momentum: MomentumScanner | null = null;
   private discoverHandle: NodeJS.Timeout | null = null;
   private positions = new Map<string, Position>();
   private seen = new Set<string>();
@@ -96,6 +112,31 @@ export class TradingBot extends EventEmitter {
       await this.frontrunner.start();
     }
 
+    if (this.cfg.momentum) {
+      const dexChain = ({ 1: "ethereum", 8453: "base", 42161: "arbitrum", 10: "optimism", 137: "polygon", 56: "bsc" } as const)[this.cfg.chain.id as 1 | 8453 | 42161 | 10 | 137 | 56] ?? "ethereum";
+      this.momentum = new MomentumScanner({
+        chain: this.cfg.chain,
+        signer: this.signer,
+        provider: this.provider,
+        dexChain,
+        topN: this.cfg.momentum.topN,
+        buyUsd: this.cfg.momentum.buyUsd,
+        ethPriceUsd: this.cfg.ethPriceUsd,
+        thresh1mPct: this.cfg.momentum.thresh1mPct,
+        thresh5mPct: this.cfg.momentum.thresh5mPct,
+        takeProfitPct: this.cfg.momentum.takeProfitPct,
+        stopLossPct: this.cfg.momentum.stopLossPct,
+        timeStopMinutes: this.cfg.momentum.timeStopMinutes,
+        minLiquidityUsd: this.cfg.momentum.minLiquidityUsd,
+        maxConcurrentPositions: this.cfg.momentum.maxConcurrentPositions,
+        slippageBps: this.cfg.slippageBps,
+        pollIntervalMs: this.cfg.momentum.pollIntervalMs,
+        paperMode: this.cfg.paperMode
+      });
+      this.momentum.on("event", (e) => this.emitEvent({ kind: "momentum", event: e }));
+      await this.momentum.start();
+    }
+
     const interval = this.cfg.discoverIntervalMs ?? 60_000;
     const tick = () => this.runDiscovery().catch((e) => this.emitEvent({ kind: "error", message: String(e) }));
     tick();
@@ -110,6 +151,8 @@ export class TradingBot extends EventEmitter {
     this.whale = null;
     await this.frontrunner?.stop();
     this.frontrunner = null;
+    this.momentum?.stop();
+    this.momentum = null;
   }
 
   status(): { running: boolean; positions: Position[] } {

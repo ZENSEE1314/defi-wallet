@@ -32,6 +32,20 @@ async function main(): Promise<void> {
     autoSellProfitPct: Number(process.env.AUTO_SELL_PROFIT_PCT ?? "50"),
     autoStopLossPct: Number(process.env.AUTO_STOP_LOSS_PCT ?? "20"),
     mirrorSell: process.env.MIRROR_SELL === "true",
+    momentum: process.env.MOMENTUM_ENABLED === "true"
+      ? {
+          topN: Number(process.env.MOMENTUM_TOP_N ?? "30"),
+          buyUsd: Number(process.env.MOMENTUM_BUY_USD ?? "8"),
+          thresh1mPct: Number(process.env.MOMENTUM_THRESH_1M_PCT ?? "1.5"),
+          thresh5mPct: Number(process.env.MOMENTUM_THRESH_5M_PCT ?? "4"),
+          takeProfitPct: Number(process.env.MOMENTUM_TP_PCT ?? "10"),
+          stopLossPct: Number(process.env.MOMENTUM_SL_PCT ?? "3"),
+          timeStopMinutes: Number(process.env.MOMENTUM_TIME_STOP_MIN ?? "30"),
+          minLiquidityUsd: Number(process.env.MOMENTUM_MIN_LIQ_USD ?? "100000"),
+          maxConcurrentPositions: Number(process.env.MOMENTUM_MAX_POS ?? "3"),
+          pollIntervalMs: Number(process.env.MOMENTUM_POLL_MS ?? "30000")
+        }
+      : undefined,
     frontrun: process.env.FRONTRUN_ENABLED === "true" && process.env.WSS_RPC_URL
       ? {
           wssUrl: process.env.WSS_RPC_URL,
