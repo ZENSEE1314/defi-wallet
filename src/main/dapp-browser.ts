@@ -1,6 +1,6 @@
 import { BrowserWindow, BrowserView, ipcMain, dialog } from "electron";
 import path from "node:path";
-import { JsonRpcProvider, parseEther } from "ethers";
+import { JsonRpcProvider } from "ethers";
 import { IPC, type RpcRequest, type RpcResponse } from "../shared/ipc";
 import { findChain } from "../shared/chains/registry";
 import { BUILTIN_CHAINS } from "../shared/chains/registry";

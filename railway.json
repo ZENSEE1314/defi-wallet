@@ -1,7 +1,8 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "echo 'skip build — bot runs via tsx'"
   },
   "deploy": {
     "startCommand": "npm run bot",
