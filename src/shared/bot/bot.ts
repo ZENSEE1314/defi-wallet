@@ -83,6 +83,7 @@ export class TradingBot extends EventEmitter {
 
   private async runDiscovery(): Promise<void> {
     const tokens = await discover(this.cfg.filters);
+    this.emitEvent({ kind: "skip", token: "(discovery)", reason: `${tokens.length} candidates passed filters` });
     for (const t of tokens.slice(0, 10)) {
       if (this.seen.has(t.baseToken.address.toLowerCase())) continue;
       this.seen.add(t.baseToken.address.toLowerCase());

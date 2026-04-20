@@ -37,7 +37,9 @@ async function main(): Promise<void> {
   });
 
   bot.on("event", (e) => console.log(JSON.stringify(e)));
+  console.log(JSON.stringify({ kind: "boot", chain: chain.name, paperMode, filters: { minLiq: process.env.DISCOVERY_MIN_LIQUIDITY_USD ?? "50000", minVol: process.env.DISCOVERY_MIN_VOLUME_24H_USD ?? "100000", maxAge: process.env.DISCOVERY_MAX_AGE_HOURS ?? "72" } }));
   await bot.start();
+  setInterval(() => console.log(JSON.stringify({ kind: "heartbeat", at: new Date().toISOString(), positions: bot.status().positions.length })), 30_000);
 
   process.on("SIGINT", async () => {
     await bot.stop();
