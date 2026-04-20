@@ -9,7 +9,7 @@ type BotEvent =
   | { kind: "skip"; token: string; reason: string }
   | { kind: "error"; message: string };
 
-const CHAIN_TO_DEX = { 1: "ethereum", 8453: "base", 42161: "arbitrum", 10: "optimism", 137: "polygon" } as const;
+const CHAIN_TO_DEX = { 1: "ethereum", 8453: "base", 42161: "arbitrum", 10: "optimism", 137: "polygon", 56: "bsc" } as const;
 
 export function BotPage(): JSX.Element {
   const [wallets, setWallets] = useState<WalletRecord[]>([]);

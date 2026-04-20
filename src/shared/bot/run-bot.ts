@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     chain: { ...chain, rpcUrl: process.env.BOT_RPC_URL ?? chain.rpcUrl },
     privateKey,
     filters: {
-      chain: chain.name.toLowerCase().includes("base") ? "base" : "ethereum",
+      chain: ({ 1: "ethereum", 8453: "base", 42161: "arbitrum", 10: "optimism", 137: "polygon", 56: "bsc" } as const)[chain.id as 1 | 8453 | 42161 | 10 | 137 | 56] ?? "ethereum",
       minLiquidityUsd: Number(process.env.DISCOVERY_MIN_LIQUIDITY_USD ?? "50000"),
       minVolume24hUsd: Number(process.env.DISCOVERY_MIN_VOLUME_24H_USD ?? "100000"),
       maxAgeHours: Number(process.env.DISCOVERY_MAX_AGE_HOURS ?? "72")

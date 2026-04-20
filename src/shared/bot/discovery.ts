@@ -12,7 +12,7 @@ export type DiscoveredToken = {
 };
 
 export type DiscoveryFilters = {
-  chain: "ethereum" | "base" | "arbitrum" | "optimism" | "polygon";
+  chain: "ethereum" | "base" | "arbitrum" | "optimism" | "polygon" | "bsc";
   minLiquidityUsd: number;
   minVolume24hUsd: number;
   maxAgeHours: number;

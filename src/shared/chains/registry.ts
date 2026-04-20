@@ -56,6 +56,17 @@ export const BUILTIN_CHAINS: Chain[] = [
     weth: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
   },
   {
+    id: 56,
+    name: "BNB Smart Chain",
+    symbol: "BNB",
+    rpcUrl: "https://bsc-dataseed.bnbchain.org",
+    explorerUrl: "https://bscscan.com",
+    // Uniswap V3 SwapRouter02 on BSC. The bot's discovery uses Dexscreener "bsc";
+    // wrap with WBNB for native swaps.
+    uniswapRouter: "0xB971eF87ede563556b2ED4b1C0b0019111Dd85d2",
+    weth: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+  },
+  {
     id: 11155111,
     name: "Sepolia (testnet)",
     symbol: "ETH",
