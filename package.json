@@ -8,12 +8,14 @@
     "dev:renderer": "vite",
     "dev:electron": "wait-on tcp:5173 && tsc -p tsconfig.main.json && electron .",
     "build": "vite build && tsc -p tsconfig.main.json",
-    "start": "electron .",
+    "start": "tsx src/shared/bot/run-bot.ts",
+    "start:electron": "electron .",
     "bot": "tsx src/shared/bot/run-bot.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "ethers": "^6.13.4",
     "@uniswap/sdk-core": "^5.9.0",
     "@uniswap/v3-sdk": "^3.18.0",
@@ -36,6 +38,9 @@
     "vite": "^5.4.11",
     "vitest": "^2.1.5",
     "wait-on": "^8.0.1"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "build": {
     "appId": "com.zensee.defi-wallet",

@@ -36,6 +36,23 @@ cp .env.example .env       # fill in BOT_PRIVATE_KEY, BOT_RPC_URL, etc.
 npm run bot
 ```
 
+## Deploy the bot to Railway
+
+The Electron wallet itself is desktop-only. The headless bot can run as a Railway worker.
+
+1. Push this repo to GitHub.
+2. Railway → New Project → Deploy from GitHub repo → pick `defi-wallet`.
+3. Railway auto-detects the `railway.json` start command (`npm run bot`).
+4. Set these env vars in the Railway service:
+   - `BOT_RPC_URL` — private RPC (Flashbots Protect, Alchemy, etc.)
+   - `BOT_CHAIN_ID` — `1` (mainnet), `8453` (Base), etc.
+   - `BOT_PRIVATE_KEY` — hex private key for a **dedicated burner wallet**
+   - `DISCOVERY_MIN_LIQUIDITY_USD`, `DISCOVERY_MIN_VOLUME_24H_USD`, `DISCOVERY_MAX_AGE_HOURS`
+   - `WHALE_ADDRESSES` — comma-separated 0x addresses
+   - `AUTO_BUY_USD`, `AUTO_SELL_PROFIT_PCT`, `AUTO_STOP_LOSS_PCT`, `SLIPPAGE_BPS`
+   - `PAPER_MODE` — `true` (default) or `false` to send live transactions
+5. Watch logs in Railway. Each event is one JSON line.
+
 ## Security model
 
 - Private keys are **never** stored unencrypted on disk. The keystore (`%APPDATA%/defi-wallet/wallet-state.json` on Windows) holds only the AES-GCM ciphertext + PBKDF2 salt.
