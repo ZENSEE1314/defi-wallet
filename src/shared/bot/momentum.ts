@@ -56,16 +56,37 @@ type Position = {
   acquiredAt: number;
 };
 
-// Dexscreener doesn't have a "top pairs by chain" endpoint. We work around it
-// by querying the chain's wrapped-native token, which returns every pair
-// trading against it on that chain — typically the highest-volume cohort.
-const QUOTE_TOKEN_BY_CHAIN: Record<string, string> = {
-  bsc: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",       // WBNB
-  ethereum: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  // WETH
-  base: "0x4200000000000000000000000000000000000006",      // WETH (Base)
-  arbitrum: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",  // WETH (Arbitrum)
-  optimism: "0x4200000000000000000000000000000000000006",  // WETH (Optimism)
-  polygon: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"    // WMATIC
+// Dexscreener doesn't have a "top pairs by chain" endpoint. We query MULTIPLE
+// high-liquidity quote tokens per chain and merge — querying just the wrapped
+// native gets dominated by stablecoin/native pairs. Including USDT widens the
+// alt universe a lot since most alts trade against USDT on BSC.
+const QUOTE_TOKENS_BY_CHAIN: Record<string, string[]> = {
+  bsc: [
+    "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // WBNB
+    "0x55d398326f99059fF775485246999027B3197955", // USDT (BEP-20)
+    "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"  // USDC
+  ],
+  ethereum: [
+    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  // USDC
+  ],
+  base: [
+    "0x4200000000000000000000000000000000000006",
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"  // USDC
+  ],
+  arbitrum: [
+    "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+    "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"  // USDC
+  ],
+  optimism: [
+    "0x4200000000000000000000000000000000000006",
+    "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"  // USDC
+  ],
+  polygon: [
+    "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"  // USDT
+  ]
 };
 
 // Stablecoins / wrapped-natives never move enough to trigger a momentum signal
@@ -257,33 +278,45 @@ type TopPair = {
 };
 
 async function fetchTopPairs(chain: string, n: number, minLiq: number): Promise<TopPair[]> {
-  const quote = QUOTE_TOKEN_BY_CHAIN[chain];
-  if (!quote) return [];
-  // /tokens/{address} returns all pairs trading the wrapped-native on every
-  // chain. We filter to the requested chain. The base token of each pair is
-  // the *other* side of the pool — that's what we want to long.
-  const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${quote}`);
-  if (!res.ok) return [];
-  const data = (await res.json()) as { pairs?: RawPair[] };
-  const quoteLower = quote.toLowerCase();
-  return (data.pairs ?? [])
-    .filter((p) => p.chainId === chain && (p.liquidity?.usd ?? 0) >= minLiq && p.priceUsd)
-    .map<TopPair>((p) => {
-      // Identify which side is the wrapped-native and pick the OTHER as our base.
-      const baseIsQuote = p.baseToken.address.toLowerCase() === quoteLower;
+  const quotes = QUOTE_TOKENS_BY_CHAIN[chain] ?? [];
+  if (quotes.length === 0) return [];
+  // Query each quote token in parallel; each returns up to ~30 pairs.
+  const responses = await Promise.all(
+    quotes.map((q) =>
+      fetch(`https://api.dexscreener.com/latest/dex/tokens/${q}`)
+        .then((r) => (r.ok ? r.json() : { pairs: [] }))
+        .catch(() => ({ pairs: [] }))
+    )
+  );
+  const quoteSet = new Set(quotes.map((q) => q.toLowerCase()));
+
+  // Flatten + dedupe by target token (we don't want the same alt twice if it
+  // pairs against multiple quotes; keep the highest-liquidity instance).
+  const byToken = new Map<string, TopPair>();
+  for (const data of responses as { pairs?: RawPair[] }[]) {
+    for (const p of data.pairs ?? []) {
+      if (p.chainId !== chain) continue;
+      if ((p.liquidity?.usd ?? 0) < minLiq) continue;
+      if (!p.priceUsd) continue;
+      const baseIsQuote = quoteSet.has(p.baseToken.address.toLowerCase());
       const target = baseIsQuote ? p.quoteToken : p.baseToken;
-      return {
+      const tokenLower = target.address.toLowerCase();
+      // Skip pairs where both sides are quotes (stable/native)
+      if (SKIP_TOKENS.has(tokenLower)) continue;
+      const candidate: TopPair = {
         token: target.address,
         symbol: target.symbol,
         priceUsd: Number(p.priceUsd),
         liquidityUsd: p.liquidity?.usd ?? 0,
         volume24h: p.volume?.h24 ?? 0
       };
-    })
-    // Skip stablecoins / wrapped-natives — they don't move enough to trigger.
-    .filter((p) => !SKIP_TOKENS.has(p.token.toLowerCase()))
-    .sort((a, b) => b.volume24h - a.volume24h)
-    .slice(0, n);
+      const existing = byToken.get(tokenLower);
+      if (!existing || candidate.liquidityUsd > existing.liquidityUsd) {
+        byToken.set(tokenLower, candidate);
+      }
+    }
+  }
+  return [...byToken.values()].sort((a, b) => b.volume24h - a.volume24h).slice(0, n);
 }
 
 type RawPair = {
