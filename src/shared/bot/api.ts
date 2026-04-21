@@ -107,13 +107,14 @@ export class BotApi {
 
     this.app.post("/api/toggle", (req, res) => {
       const body = req.body as Partial<RuntimeFlags>;
-      if (typeof body.paperMode === "boolean") this.flags.paperMode = body.paperMode;
+      if (typeof body.paperMode === "boolean") {
+        this.flags.paperMode = body.paperMode;
+        // Actually push the change down into the bot + scanners
+        this.bot.setPaperMode(body.paperMode);
+      }
       if (typeof body.momentumEnabled === "boolean") this.flags.momentumEnabled = body.momentumEnabled;
       if (typeof body.frontrunEnabled === "boolean") this.flags.frontrunEnabled = body.frontrunEnabled;
-      // Notify the running bot — it watches `getFlags()` per tick for paperMode,
-      // but mode toggles (momentum/frontrun) require a process restart to take
-      // effect because the underlying scanners are spun up at start().
-      res.json({ flags: this.flags, note: "paperMode applies immediately. Enabling/disabling momentum or frontrun requires a Railway redeploy to take effect." });
+      res.json({ flags: this.flags, note: "paperMode now applies immediately. Enabling/disabling momentum or frontrun requires a Railway redeploy to take effect." });
     });
 
     this.app.post("/api/clear", (req, res) => {

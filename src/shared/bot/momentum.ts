@@ -56,7 +56,17 @@ type Position = {
   acquiredAt: number;
 };
 
-const DEXSCREENER_BASE = "https://api.dexscreener.com/latest/dex/search?q=";
+// Dexscreener doesn't have a "top pairs by chain" endpoint. We work around it
+// by querying the chain's wrapped-native token, which returns every pair
+// trading against it on that chain — typically the highest-volume cohort.
+const QUOTE_TOKEN_BY_CHAIN: Record<string, string> = {
+  bsc: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",       // WBNB
+  ethereum: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  // WETH
+  base: "0x4200000000000000000000000000000000000006",      // WETH (Base)
+  arbitrum: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",  // WETH (Arbitrum)
+  optimism: "0x4200000000000000000000000000000000000006",  // WETH (Optimism)
+  polygon: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"    // WMATIC
+};
 
 export class MomentumScanner extends EventEmitter {
   private cfg: MomentumConfig;
@@ -215,19 +225,29 @@ type TopPair = {
 };
 
 async function fetchTopPairs(chain: string, n: number, minLiq: number): Promise<TopPair[]> {
-  // Dexscreener's search returns recent + popular pairs for the chain.
-  const res = await fetch(`${DEXSCREENER_BASE}${chain}`);
+  const quote = QUOTE_TOKEN_BY_CHAIN[chain];
+  if (!quote) return [];
+  // /tokens/{address} returns all pairs trading the wrapped-native on every
+  // chain. We filter to the requested chain. The base token of each pair is
+  // the *other* side of the pool — that's what we want to long.
+  const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${quote}`);
   if (!res.ok) return [];
   const data = (await res.json()) as { pairs?: RawPair[] };
+  const quoteLower = quote.toLowerCase();
   return (data.pairs ?? [])
     .filter((p) => p.chainId === chain && (p.liquidity?.usd ?? 0) >= minLiq && p.priceUsd)
-    .map<TopPair>((p) => ({
-      token: p.baseToken.address,
-      symbol: p.baseToken.symbol,
-      priceUsd: Number(p.priceUsd),
-      liquidityUsd: p.liquidity?.usd ?? 0,
-      volume24h: p.volume?.h24 ?? 0
-    }))
+    .map<TopPair>((p) => {
+      // Identify which side is the wrapped-native and pick the OTHER as our base.
+      const baseIsQuote = p.baseToken.address.toLowerCase() === quoteLower;
+      const target = baseIsQuote ? p.quoteToken : p.baseToken;
+      return {
+        token: target.address,
+        symbol: target.symbol,
+        priceUsd: Number(p.priceUsd),
+        liquidityUsd: p.liquidity?.usd ?? 0,
+        volume24h: p.volume?.h24 ?? 0
+      };
+    })
     .sort((a, b) => b.volume24h - a.volume24h)
     .slice(0, n);
 }
@@ -235,6 +255,7 @@ async function fetchTopPairs(chain: string, n: number, minLiq: number): Promise<
 type RawPair = {
   chainId: string;
   baseToken: { address: string; symbol: string };
+  quoteToken: { address: string; symbol: string };
   priceUsd?: string;
   liquidity?: { usd?: number };
   volume?: { h24?: number };

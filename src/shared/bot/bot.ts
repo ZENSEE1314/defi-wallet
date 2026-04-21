@@ -143,6 +143,13 @@ export class TradingBot extends EventEmitter {
     this.discoverHandle = setInterval(tick, interval);
   }
 
+  setPaperMode(v: boolean): void {
+    this.cfg.paperMode = v;
+    // Propagate to the running scanners so the next tick respects the new mode.
+    if (this.momentum) (this.momentum as unknown as { cfg: { paperMode: boolean } }).cfg.paperMode = v;
+    if (this.frontrunner) (this.frontrunner as unknown as { cfg: { paperMode: boolean } }).cfg.paperMode = v;
+  }
+
   async stop(): Promise<void> {
     this.running = false;
     if (this.discoverHandle) clearInterval(this.discoverHandle);
