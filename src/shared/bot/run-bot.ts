@@ -10,10 +10,19 @@ async function main(): Promise<void> {
   const chainId = Number(process.env.BOT_CHAIN_ID ?? "1");
   const chain = findChain(BUILTIN_CHAINS, chainId);
   if (!chain) throw new Error(`unknown chain ${chainId}`);
-  const paperMode = process.env.PAPER_MODE !== "false";
-  if (!process.env.BOT_PRIVATE_KEY && !paperMode) {
-    throw new Error("BOT_PRIVATE_KEY required when PAPER_MODE=false");
+  // Hard rule: only go live if BOTH env conditions are met:
+  //   - PAPER_MODE is set to the EXACT literal string "false"
+  //   - GO_LIVE_CONFIRMED is set to "yes-i-know-this-is-real-money"
+  // Any other state (missing, "true", typo, blank) → paper mode.
+  // This prevents the bot from accidentally trading real funds after a restart
+  // when the user thought they had paper mode on.
+  const liveExplicitlyRequested =
+    process.env.PAPER_MODE === "false" && process.env.GO_LIVE_CONFIRMED === "yes-i-know-this-is-real-money";
+  const paperMode = !liveExplicitlyRequested;
+  if (!paperMode && !process.env.BOT_PRIVATE_KEY) {
+    throw new Error("BOT_PRIVATE_KEY required when going live");
   }
+  console.log(JSON.stringify({ kind: "mode-decision", paperMode, paperModeEnv: process.env.PAPER_MODE, liveConfirmed: !!process.env.GO_LIVE_CONFIRMED }));
   // Paper mode never sends transactions, so a throwaway random key is fine.
   const privateKey =
     process.env.BOT_PRIVATE_KEY ??
